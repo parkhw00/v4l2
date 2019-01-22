@@ -1,5 +1,6 @@
 
 TARGET += desc
+TARGET += capture
 
 CFLAGS += -Wall
 
