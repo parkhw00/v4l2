@@ -41,7 +41,7 @@ int print_fmt (struct v4l2_format *fmt)
 	print_field (fmt, fmt.pix.colorspace, "d");
 	print_field (fmt, fmt.pix.priv, "08x");
 	print_field (fmt, fmt.pix.flags, "d");
-	print_field (fmt, fmt.pix.hsv_enc, "d");
+	print_field (fmt, fmt.pix.ycbcr_enc, "d");
 	print_field (fmt, fmt.pix.quantization, "d");
 	print_field (fmt, fmt.pix.xfer_func, "d");
 

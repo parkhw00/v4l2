@@ -42,7 +42,9 @@ int desc_fmt (int fd, enum v4l2_buf_type type)
 		define_buf_type(V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE),
 		define_buf_type(V4L2_BUF_TYPE_SDR_CAPTURE),
 		define_buf_type(V4L2_BUF_TYPE_SDR_OUTPUT),
+#ifdef V4L2_BUF_TYPE_META_CAPTURE
 		define_buf_type(V4L2_BUF_TYPE_META_CAPTURE),
+#endif
 	};
 
 	printf ("buf type %2d %s\n", type, type < (sizeof (buf_type_name)/sizeof (buf_type_name[0])) ? buf_type_name[type]:"unknown");
@@ -164,11 +166,15 @@ int desc (const char *name)
 			define_field(V4L2_CAP_SDR_CAPTURE),
 			define_field(V4L2_CAP_EXT_PIX_FORMAT),
 			define_field(V4L2_CAP_SDR_OUTPUT),
+#ifdef V4L2_CAP_META_CAPTURE
 			define_field(V4L2_CAP_META_CAPTURE),
+#endif
 			define_field(V4L2_CAP_READWRITE),
 			define_field(V4L2_CAP_ASYNCIO),
 			define_field(V4L2_CAP_STREAMING),
+#ifdef V4L2_CAP_TOUCH
 			define_field(V4L2_CAP_TOUCH),
+#endif
 			define_field(V4L2_CAP_DEVICE_CAPS),
 			{ },
 		};
@@ -197,7 +203,9 @@ int desc (const char *name)
 	do_desc_fmt (VIDEO_OUTPUT_MPLANE);
 	do_desc_fmt (SDR_CAPTURE);
 	do_desc_fmt (SDR_OUTPUT);
+#ifdef V4L2_CAP_META_CAPTURE
 	do_desc_fmt (META_CAPTURE);
+#endif
 
 	return 0;
 }
