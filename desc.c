@@ -207,6 +207,66 @@ int desc (const char *name)
 	do_desc_fmt (META_CAPTURE);
 #endif
 
+	printf ("\ninput...\n");
+	for (i=0; ; i++)
+	{
+		struct v4l2_input in;
+
+		memset (&in, 0, sizeof (in));
+		in.index = i;
+		ret = ioctl (fd, VIDIOC_ENUMINPUT, &in);
+		if (ret < 0)
+			break;
+
+		printf ("  %2d. %32s, type %d, as %d, tu %d, std %llx, st %d, ca %x\n",
+				in.index, in.name, in.type, in.audioset, in.tuner, in.std, in.status, in.capabilities);
+	}
+
+	printf ("\noutput...\n");
+	for (i=0; ; i++)
+	{
+		struct v4l2_output out;
+
+		memset (&out, 0, sizeof (out));
+		out.index = i;
+		ret = ioctl (fd, VIDIOC_ENUMOUTPUT, &out);
+		if (ret < 0)
+			break;
+
+		printf ("  %2d. %32s, type %d, as %d, mo %d, std %llx, ca %x\n",
+				out.index, out.name, out.type, out.audioset, out.modulator, out.std, out.capabilities);
+	}
+
+	printf ("\nautio...\n");
+	for (i=0; ; i++)
+	{
+		struct v4l2_audio aud;
+
+		memset (&aud, 0, sizeof (aud));
+		aud.index = i;
+		ret = ioctl (fd, VIDIOC_ENUMAUDIO, &aud);
+		if (ret < 0)
+			break;
+
+		printf ("  %2d. %32s, cap 0x%08x, mode 0x%08x\n",
+				aud.index, aud.name, aud.capability, aud.mode);
+	}
+
+	printf ("\nautio out...\n");
+	for (i=0; ; i++)
+	{
+		struct v4l2_audioout aud;
+
+		memset (&aud, 0, sizeof (aud));
+		aud.index = i;
+		ret = ioctl (fd, VIDIOC_ENUMAUDOUT, &aud);
+		if (ret < 0)
+			break;
+
+		printf ("  %2d. %32s, cap 0x%08x, mode 0x%08x\n",
+				aud.index, aud.name, aud.capability, aud.mode);
+	}
+
 	return 0;
 }
 
