@@ -27,11 +27,11 @@ void error (const char *fmt, ...)
 
 int print_fmt (struct v4l2_format *fmt)
 {
-#define print_field(s,f,t)	printf (#s"->"#f" : %"t"\n", s->f)
+#define print_field(s,f,t)	fprintf (stderr, #s"->"#f" : %"t"\n", s->f)
 	print_field (fmt, fmt.pix.width, "d");
 	print_field (fmt, fmt.pix.height, "d");
 	print_field (fmt, fmt.pix.pixelformat, "08x");
-	printf ("fmt->fmt.pix.pixelformat : %c%c%c%c\n",
+	fprintf (stderr, "fmt->fmt.pix.pixelformat : %c%c%c%c\n",
 			(fmt->fmt.pix.pixelformat>> 0)&0xff,
 			(fmt->fmt.pix.pixelformat>> 8)&0xff,
 			(fmt->fmt.pix.pixelformat>>16)&0xff,
@@ -147,9 +147,9 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 			goto done;
 		}
 
-		printf ("bufs[%d].vb.offset 0x%x(%d)\n", i, bufs[i].vb.m.offset, bufs[i].vb.m.offset);
-		printf ("bufs[%d].vb.length 0x%x(%d)\n", i, bufs[i].vb.length, bufs[i].vb.length);
-		printf ("bufs[%d].vb.flags 0x%x\n", i, bufs[i].vb.flags);
+		fprintf (stderr, "bufs[%d].vb.offset 0x%x(%d)\n", i, bufs[i].vb.m.offset, bufs[i].vb.m.offset);
+		fprintf (stderr, "bufs[%d].vb.length 0x%x(%d)\n", i, bufs[i].vb.length, bufs[i].vb.length);
+		fprintf (stderr, "bufs[%d].vb.flags 0x%x\n", i, bufs[i].vb.flags);
 
 		bufs[i].mem = mmap (NULL, bufs[i].vb.length, PROT_READ, MAP_SHARED, fd, bufs[i].vb.m.offset);
 		if (bufs[i].mem == MAP_FAILED)
@@ -157,7 +157,7 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 			error ("mmap() failed for buf %d\n", i);
 			goto done;
 		}
-		printf ("bufs[%d].mem %p\n", i, bufs[i].mem);
+		fprintf (stderr, "bufs[%d].mem %p\n", i, bufs[i].mem);
 
 		if (!(bufs[i].vb.flags & V4L2_BUF_FLAG_QUEUED))
 		{
@@ -196,7 +196,7 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 
 		for (i=0; i<8; i++)
 			sprintf (str+3*i, " %02x", ((unsigned char*)bufs[vb.index].mem)[i]);
-		printf ("bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n", vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
+		fprintf (stderr, "bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n", vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
 		got_data (got_data_arg, bufs[vb.index].mem, vb.bytesused);
 
 		ret = ioctl (fd, VIDIOC_QBUF, &vb);
