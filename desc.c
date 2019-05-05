@@ -46,8 +46,15 @@ int desc_fmt (int fd, enum v4l2_buf_type type)
 		define_buf_type(V4L2_BUF_TYPE_META_CAPTURE),
 #endif
 	};
+	const char *type_name;
 
-	printf ("buf type %2d %s\n", type, type < (sizeof (buf_type_name)/sizeof (buf_type_name[0])) ? buf_type_name[type]:"unknown");
+	type_name = NULL;
+	if (type < (sizeof (buf_type_name)/sizeof (buf_type_name[0])))
+		type_name = buf_type_name[type];
+	if (!type_name)
+		type_name = "unknown";
+
+	printf ("buf type %2d %s\n", type, type_name);
 
 	for (i=0; ; i++)
 	{
@@ -110,6 +117,28 @@ int desc_fmt (int fd, enum v4l2_buf_type type)
 				}
 				printf ("\n");
 			}
+		}
+	}
+
+	if (strstr (type_name, "_CAPTURE"))
+	{
+		int ret;
+		struct v4l2_streamparm param = { };
+
+		param.type = type;
+		ret = ioctl (fd, VIDIOC_G_PARM, &param);
+		if (ret < 0)
+			printf ("VIDIOC_G_PARM failed. %s\n", strerror (errno));
+		else
+		{
+			printf ("capture param\n");
+			printf ("  capability   0x%08x\n", param.parm.capture.capability);
+			printf ("  capturemode  0x%08x\n", param.parm.capture.capturemode);
+			printf ("  timeperframe %d/%d\n",
+				param.parm.capture.timeperframe.numerator,
+				param.parm.capture.timeperframe.denominator);
+			printf ("  extendedmode 0x%08x\n", param.parm.capture.extendedmode);
+			printf ("  readbuffers  %d\n", param.parm.capture.readbuffers);
 		}
 	}
 
