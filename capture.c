@@ -1,11 +1,14 @@
 
 #include <linux/videodev2.h>
+#include <linux/uvcvideo.h>
+#include <linux/usb/video.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -14,15 +17,182 @@
 #include <unistd.h>
 #include <getopt.h>
 
-void error (const char *fmt, ...)
+#define error(fmt,args...)	_error("%s.%d "fmt, __func__, __LINE__, #args)
+void _error (const char *fmt, ...)
 {
 	va_list ap;
 	int en = errno;
 
 	va_start (ap, fmt);
-	vfprintf (stderr, fmt, ap);
+	vfprintf (stdout, fmt, ap);
 	va_end (ap);
-	fprintf (stderr, "errno %d, %s\n", en, strerror (en));
+	fprintf (stdout, "errno %d, %s\n", en, strerror (en));
+}
+
+/* UVC H.264 control selectors */
+
+typedef enum _uvcx_control_selector_t
+{
+	UVCX_VIDEO_CONFIG_PROBE			= 0x01,
+	UVCX_VIDEO_CONFIG_COMMIT		= 0x02,
+	UVCX_RATE_CONTROL_MODE			= 0x03,
+	UVCX_TEMPORAL_SCALE_MODE		= 0x04,
+	UVCX_SPATIAL_SCALE_MODE			= 0x05,
+	UVCX_SNR_SCALE_MODE			= 0x06,
+	UVCX_LTR_BUFFER_SIZE_CONTROL		= 0x07,
+	UVCX_LTR_PICTURE_CONTROL		= 0x08,
+	UVCX_PICTURE_TYPE_CONTROL		= 0x09,
+	UVCX_VERSION				= 0x0A,
+	UVCX_ENCODER_RESET			= 0x0B,
+	UVCX_FRAMERATE_CONFIG			= 0x0C,
+	UVCX_VIDEO_ADVANCE_CONFIG		= 0x0D,
+	UVCX_BITRATE_LAYERS			= 0x0E,
+	UVCX_QP_STEPS_LAYERS			= 0x0F,
+} uvcx_control_selector_t;
+
+typedef unsigned int   guint32;
+typedef unsigned short guint16;
+typedef unsigned char  guint8;
+
+typedef struct _uvcx_video_config_probe_commit_t
+{
+	guint32	dwFrameInterval;
+	guint32	dwBitRate;
+	guint16	bmHints;
+	guint16	wConfigurationIndex;
+	guint16	wWidth;
+	guint16	wHeight;
+	guint16	wSliceUnits;
+	guint16	wSliceMode;
+	guint16	wProfile;
+	guint16	wIFramePeriod;
+	guint16	wEstimatedVideoDelay;
+	guint16	wEstimatedMaxConfigDelay;
+	guint8	bUsageType;
+	guint8	bRateControlMode;
+	guint8	bTemporalScaleMode;
+	guint8	bSpatialScaleMode;
+	guint8	bSNRScaleMode;
+	guint8	bStreamMuxOption;
+	guint8	bStreamFormat;
+	guint8	bEntropyCABAC;
+	guint8	bTimestamp;
+	guint8	bNumOfReorderFrames;
+	guint8	bPreviewFlipped;
+	guint8	bView;
+	guint8	bReserved1;
+	guint8	bReserved2;
+	guint8	bStreamID;
+	guint8	bSpatialLayerRatio;
+	guint16	wLeakyBucketSize;
+} __attribute__((packed)) uvcx_video_config_probe_commit_t;
+
+#define UVC_GET_LEN					0x85
+int xu_query (int v4l2_fd, unsigned int selector, unsigned int query, void * data)
+{
+	struct uvc_xu_control_query xu;
+	unsigned short len;
+
+	xu.unit = 12;//self->h264_unit_id;
+	xu.selector = selector;
+
+	xu.query = UVC_GET_LEN;
+	xu.size = sizeof (len);
+	xu.data = (unsigned char *) &len;
+	if (-1 == ioctl (v4l2_fd, UVCIOC_CTRL_QUERY, &xu)) {
+		error ("PROBE GET_LEN error\n");
+		return -1;
+	}
+
+	if (query == UVC_GET_LEN) {
+		*((unsigned short *) data) = len;
+	} else {
+		xu.query = query;
+		xu.size = len;
+		xu.data = data;
+		if (-1 == ioctl (v4l2_fd, UVCIOC_CTRL_QUERY, &xu)) {
+			error ("query %u failed\n", query);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static void
+print_probe_commit (uvcx_video_config_probe_commit_t * probe)
+{
+	printf ("  Frame interval : %d *100ns\n",
+			probe->dwFrameInterval);
+	printf ("  Bit rate : %d\n", probe->dwBitRate);
+	printf ("  Hints : %X\n", probe->bmHints);
+	printf ("  Configuration index : %d\n",
+			probe->wConfigurationIndex);
+	printf ("  Width : %d\n", probe->wWidth);
+	printf ("  Height : %d\n", probe->wHeight);
+	printf ("  Slice units : %d\n", probe->wSliceUnits);
+	printf ("  Slice mode : %X\n", probe->wSliceMode);
+	printf ("  Profile : %X\n", probe->wProfile);
+	printf ("  IFrame Period : %d ms\n", probe->wIFramePeriod);
+	printf ("  Estimated video delay : %d ms\n",
+			probe->wEstimatedVideoDelay);
+	printf ("  Estimated max config delay : %d ms\n",
+			probe->wEstimatedMaxConfigDelay);
+	printf ("  Usage type : %X\n", probe->bUsageType);
+	printf ("  Rate control mode : %X\n", probe->bRateControlMode);
+	printf ("  Temporal scale mode : %X\n",
+			probe->bTemporalScaleMode);
+	printf ("  Spatial scale mode : %X\n",
+			probe->bSpatialScaleMode);
+	printf ("  SNR scale mode : %X\n", probe->bSNRScaleMode);
+	printf ("  Stream mux option : %X\n", probe->bStreamMuxOption);
+	printf ("  Stream Format : %X\n", probe->bStreamFormat);
+	printf ("  Entropy CABAC : %X\n", probe->bEntropyCABAC);
+	printf ("  Timestamp : %X\n", probe->bTimestamp);
+	printf ("  Num of reorder frames : %d\n",
+			probe->bNumOfReorderFrames);
+	printf ("  Preview flipped : %X\n", probe->bPreviewFlipped);
+	printf ("  View : %d\n", probe->bView);
+	printf ("  Stream ID : %X\n", probe->bStreamID);
+	printf ("  Spatial layer ratio : %f\n",
+			((probe->bSpatialLayerRatio & 0xF0) >> 4) +
+			((float) (probe->bSpatialLayerRatio & 0x0F)) / 16);
+	printf ("  Leaky bucket size : %d ms\n",
+			probe->wLeakyBucketSize);
+}
+
+int set_probe (int fd)
+{
+	uvcx_video_config_probe_commit_t probe = { };
+
+	if (xu_query (fd, UVCX_VIDEO_CONFIG_PROBE, UVC_GET_CUR, & probe) < 0) {
+		error ("PROBE GET_CUR error\n");
+		return -1;
+	}
+
+	print_probe_commit (&probe);
+	//probe.wWidth = 1280;
+	//probe.wHeight = 720;
+	probe.wIFramePeriod = 2000;
+
+	if (xu_query (fd, UVCX_VIDEO_CONFIG_PROBE, UVC_SET_CUR, & probe) < 0) {
+		error ("PROBE GET_CUR error\n");
+		return -1;
+	}
+
+	if (xu_query (fd, UVCX_VIDEO_CONFIG_PROBE, UVC_GET_CUR, & probe) < 0) {
+		error ("PROBE GET_CUR error\n");
+		return -1;
+	}
+
+	print_probe_commit (&probe);
+
+	if (xu_query (fd, UVCX_VIDEO_CONFIG_COMMIT, UVC_SET_CUR, & probe) < 0) {
+		error ("PROBE GET_CUR error\n");
+		return -1;
+	}
+
+	return 0;
 }
 
 int print_fmt (struct v4l2_format *fmt)
@@ -63,6 +233,7 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 	int fd;
 	int ret;
 	int i;
+	int frame_count = 0;
 
 	fd = open (name, O_RDWR);
 	if (fd < 0)
@@ -84,6 +255,8 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 		ret = -1;
 		goto done;
 	}
+
+	set_probe (fd);
 
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	ret = ioctl (fd, VIDIOC_G_FMT, &fmt);
@@ -196,7 +369,8 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 
 		for (i=0; i<8; i++)
 			sprintf (str+3*i, " %02x", ((unsigned char*)bufs[vb.index].mem)[i]);
-		fprintf (stderr, "bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n", vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
+		fprintf (stderr, "%4d. bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n",
+				frame_count, vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
 		got_data (got_data_arg, bufs[vb.index].mem, vb.bytesused);
 
 		ret = ioctl (fd, VIDIOC_QBUF, &vb);
@@ -205,6 +379,8 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 			error ("VIDIOC_DQBUF failed.\n");
 			goto done;
 		}
+
+		frame_count ++;
 	}
 
 	/* stream off */
@@ -221,13 +397,53 @@ done:
 	return ret;
 }
 
+struct got_data_arg
+{
+	int outfd;
+	int dump_level;
+};
+
 int got_data (void *arg, void *data, int size)
 {
-	int outfd = *(int*)arg;
+	struct got_data_arg *gd_arg = arg;
 
-	if (outfd >= 0)
+	if (gd_arg->dump_level > 0)
 	{
-		write (outfd, data, size);
+		int offs;
+		int zeros;
+		unsigned char *p;
+		bool got_start;
+
+		zeros = 0;
+		p = data;
+		got_start = false;
+		for (offs = 0, p = data; (void *)p < data + size; p ++, offs ++)
+		{
+			if (got_start)
+			{
+				unsigned char *t = p - zeros;
+
+				printf ("%02x %02x %02x %02x %02x %02x %02x %02x - NAL type %2d at offs %d\n",
+						t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7],
+						*p & 0x1f, offs);
+				got_start = false;
+				zeros = 0;
+			}
+			else
+			{
+				if (*p == 0)
+					zeros ++;
+				else if (zeros > 2 && *p == 0x01)
+					got_start = true;
+				else
+					zeros = 0;
+			}
+		}
+	}
+
+	if (gd_arg->outfd >= 0)
+	{
+		write (gd_arg->outfd, data, size);
 	}
 
 	return 0;
@@ -237,7 +453,7 @@ int main (int argc, char **argv)
 {
 	char *opt_device = "/dev/video0";
 	char *opt_output = NULL;
-	int outfd = -1;
+	struct got_data_arg gd_arg = { };
 	int opt_width = -1;
 	int opt_height = -1;
 	unsigned int opt_pixelformat = 0;
@@ -247,7 +463,7 @@ int main (int argc, char **argv)
 	{
 		int opt;
 
-		opt = getopt (argc, argv, "?d:w:h:f:o:");
+		opt = getopt (argc, argv, "?d:w:h:f:o:x:");
 		if (opt < 0)
 			break;
 
@@ -262,6 +478,7 @@ int main (int argc, char **argv)
 					" -w <height>         : height of captured screen\n"
 					" -f <pixelformat>    : pixel format\n"
 					" -o <filename>       : filename of pixel dump\n"
+					" -x <dump level>     : console stream dump level\n"
 					, opt_device);
 				exit (1);
 
@@ -289,20 +506,25 @@ int main (int argc, char **argv)
 			case 'o':
 				opt_output = optarg;
 				break;
+
+			case 'x':
+				gd_arg.dump_level = atoi (optarg);
+				break;
 		}
 	}
 
+	gd_arg.outfd = -1;
 	if (opt_output)
 	{
-		outfd = open (opt_output, O_CREAT|O_WRONLY|O_TRUNC, 0644);
-		if (outfd < 0)
+		gd_arg.outfd = open (opt_output, O_CREAT|O_WRONLY|O_TRUNC, 0644);
+		if (gd_arg.outfd < 0)
 		{
 			error ("cannot open %s\n", opt_output);
 			exit (1);
 		}
 	}
 
-	v4l2_capture (opt_device, opt_width, opt_height, -1, -1, opt_pixelformat, &running, got_data, &outfd);
+	v4l2_capture (opt_device, opt_width, opt_height, -1, -1, opt_pixelformat, &running, got_data, &gd_arg);
 
 	return 0;
 }
