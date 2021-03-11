@@ -1,4 +1,6 @@
 
+#define _GNU_SOURCE
+
 #include <linux/videodev2.h>
 #include <linux/uvcvideo.h>
 #include <linux/usb/video.h>
@@ -28,6 +30,8 @@ void _error (const char *fmt, ...)
 	va_end (ap);
 	fprintf (stdout, "errno %d, %s\n", en, strerror (en));
 }
+
+int debug_level;
 
 /* UVC H.264 control selectors */
 
@@ -355,7 +359,6 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 	while (*running)
 	{
 		struct v4l2_buffer vb;
-		char str[3*8 + 1];
 
 		/* dequeue */
 		memset (&vb, 0, sizeof (vb));
@@ -367,10 +370,15 @@ int v4l2_capture (const char *name, int width, int height, int fr_num, int fr_de
 			goto done;
 		}
 
-		for (i=0; i<8; i++)
-			sprintf (str+3*i, " %02x", ((unsigned char*)bufs[vb.index].mem)[i]);
-		fprintf (stderr, "%4d. bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n",
-				frame_count, vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
+		if (debug_level > 0)
+		{
+			char str[3*8 + 1];
+
+			for (i=0; i<8; i++)
+				sprintf (str+3*i, " %02x", ((unsigned char*)bufs[vb.index].mem)[i]);
+			fprintf (stderr, "%4d. bufs[%d] flags 0x%x, bytes %6d, field %d, seq %5d, data:%s\n",
+					frame_count, vb.index, vb.flags, vb.bytesused, vb.field, vb.sequence, str);
+		}
 		got_data (got_data_arg, bufs[vb.index].mem, vb.bytesused);
 
 		ret = ioctl (fd, VIDIOC_QBUF, &vb);
@@ -401,11 +409,31 @@ struct got_data_arg
 {
 	int outfd;
 	int dump_level;
+	char *single_out;
 };
+
+int opt_skip_frames;
+int current_skip_count;
 
 int got_data (void *arg, void *data, int size)
 {
 	struct got_data_arg *gd_arg = arg;
+
+	if (opt_skip_frames > 0)
+	{
+		current_skip_count ++;
+		if (current_skip_count < opt_skip_frames)
+		{
+			if (debug_level > 0)
+				printf ("skip.   %d/%d\n", current_skip_count, opt_skip_frames);
+
+			return 0;
+		}
+
+		if (debug_level > 0)
+			printf ("handle. %d/%d\n", current_skip_count, opt_skip_frames);
+		current_skip_count = 0;
+	}
 
 	if (gd_arg->dump_level > 0)
 	{
@@ -446,6 +474,34 @@ int got_data (void *arg, void *data, int size)
 		write (gd_arg->outfd, data, size);
 	}
 
+	if (gd_arg->single_out)
+	{
+		char *tmp_fname = NULL;
+
+		asprintf (&tmp_fname, "%s.tmp", gd_arg->single_out);
+		if (tmp_fname)
+		{
+			int out;
+
+			out = open (tmp_fname, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (out)
+			{
+				ssize_t written;
+
+				written = write (out, data, size);
+				if (debug_level > 0)
+					printf ("%zd written\n", written);
+				close (out);
+				if (rename (tmp_fname, gd_arg->single_out) < 0)
+					error ("rename() failed. %s(%d)\n", strerror(errno), errno);
+			}
+			else
+				error ("open(%s) failed. %s(%d)\n", tmp_fname, strerror(errno), errno);
+
+			free (tmp_fname);
+		}
+	}
+
 	return 0;
 }
 
@@ -463,7 +519,7 @@ int main (int argc, char **argv)
 	{
 		int opt;
 
-		opt = getopt (argc, argv, "?d:w:h:f:o:x:");
+		opt = getopt (argc, argv, "?d:w:h:f:o:s:x:k:D");
 		if (opt < 0)
 			break;
 
@@ -478,7 +534,10 @@ int main (int argc, char **argv)
 					" -w <height>         : height of captured screen\n"
 					" -f <pixelformat>    : pixel format\n"
 					" -o <filename>       : filename of pixel dump\n"
+					" -s <filename>       : filename of pixel dump. keeps one recent frame\n"
 					" -x <dump level>     : console stream dump level\n"
+					" -k <frame skip count> : 0 or 1 for no skip. 5 for 4 frames skip in 5 frames\n"
+					" -D                  : increase debug level\n"
 					, opt_device);
 				exit (1);
 
@@ -507,8 +566,20 @@ int main (int argc, char **argv)
 				opt_output = optarg;
 				break;
 
+			case 's':
+				gd_arg.single_out = optarg;
+				break;
+
 			case 'x':
 				gd_arg.dump_level = atoi (optarg);
+				break;
+
+			case 'k':
+				opt_skip_frames = atoi (optarg);
+				break;
+
+			case 'D':
+				debug_level ++;
 				break;
 		}
 	}
